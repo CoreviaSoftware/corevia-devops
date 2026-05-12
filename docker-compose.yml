@@ -1,0 +1,115 @@
+name: corevia
+
+# Default stack: pulls pre-built images from GHCR. Works as-is on a server.
+# For local builds from sibling smartcity-be/ and smartcity-fe/ source trees,
+# add the -f docker-compose.local.yml overlay (see that file's header).
+# For the production deployment with Caddy + TLS, add docker-compose.prod.yml.
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: corevia-db
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-smartcity}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-smartcity}
+      POSTGRES_DB: ${DB_NAME:-smartcity}
+    ports:
+      - "${DB_PORT_HOST:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-smartcity}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: corevia-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: corevia-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.9.3
+    container_name: corevia-mediamtx
+    environment:
+      # MediaMTX overrides any YAML key via MTX_<UPPERCASE_KEY>. The auth
+      # callback points at the backend service inside the compose network.
+      MTX_AUTHHTTPADDRESS: http://backend:3001/internal/mediamtx/auth?secret=${MEDIAMTX_SHARED_SECRET:?MEDIAMTX_SHARED_SECRET must be set}
+    ports:
+      - "8554:8554"
+      - "8888:8888"
+      - "9997:9997"
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml
+
+  backend:
+    image: ghcr.io/coreviasoftware/corevia-be:${IMAGE_TAG_BE:-latest}
+    container_name: corevia-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-prod}
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-smartcity}
+      DB_USERNAME: ${DB_USERNAME:-smartcity}
+      DB_PASSWORD: ${DB_PASSWORD:-smartcity}
+      REDIS_URL: redis://redis:6379
+      MQTT_URL: tcp://mosquitto:1883
+      MEDIAMTX_HLS_URL: ${MEDIAMTX_HLS_URL_PUBLIC:-http://localhost:8888}
+      MEDIAMTX_API_URL: http://mediamtx:9997
+      MEDIAMTX_API_USERNAME: ${MEDIAMTX_API_USERNAME:?MEDIAMTX_API_USERNAME must be set}
+      MEDIAMTX_API_PASSWORD: ${MEDIAMTX_API_PASSWORD:?MEDIAMTX_API_PASSWORD must be set}
+      MEDIAMTX_SHARED_SECRET: ${MEDIAMTX_SHARED_SECRET:?MEDIAMTX_SHARED_SECRET must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+
+  frontend:
+    image: ghcr.io/coreviasoftware/corevia-fe:${IMAGE_TAG_FE:-latest}
+    container_name: corevia-frontend
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: http://backend:3001
+    ports:
+      - "3030:3030"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_log:

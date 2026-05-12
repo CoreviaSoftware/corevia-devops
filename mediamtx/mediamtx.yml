@@ -1,0 +1,25 @@
+api: yes
+apiAddress: :9997
+
+hlsAddress: :8888
+rtspAddress: :8554
+
+hlsVariant: mpegts
+hlsAllowOrigin: '*'
+
+authMethod: http
+# authHTTPAddress is supplied at runtime via MTX_AUTHHTTPADDRESS so the host
+# (host.docker.internal vs backend service vs public hostname) and the shared
+# secret can vary per deployment. See docker-compose.yml mediamtx env block.
+# 1.9.x schema: {action, path}. Excluding `api` because the http callback panics
+# on api action ('invalid auth action: ''' bug); rely on Basic Auth for the API.
+# Excluding `publish` because per-path publishUser/publishPass handles it.
+authHTTPExclude:
+  - action: api
+  - action: publish
+
+paths:
+  all:
+    # No publishUser/publishPass — legacy per-path creds conflict with the modern
+    # auth model in 1.9.x. Publish auth is bypassed via authHTTPExclude above.
+    source: publisher

@@ -1,0 +1,20 @@
+# Local-build overlay. Builds backend & frontend from sibling source trees
+# instead of pulling GHCR images. Useful for full-stack containerized dev.
+#
+# Usage (from CoreVia/):
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+#
+# Requires sibling directories: ./smartcity-be and ./smartcity-fe
+
+services:
+  backend:
+    image: !reset null
+    build:
+      context: ./smartcity-be
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
+
+  frontend:
+    image: !reset null
+    build:
+      context: ./smartcity-fe

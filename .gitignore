@@ -1,0 +1,15 @@
+# Application source — lives in its own repos, cloned next to this devops repo
+# only for local-build workflow. Never tracked here.
+smartcity-be/
+smartcity-fe/
+
+# Secrets
+.env
+.env.local
+.env.production
+
+# Local-only ops artefacts
+build/
+.idea/
+.vscode/
+*.log
