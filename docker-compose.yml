@@ -72,6 +72,11 @@ services:
       DB_NAME: ${DB_NAME:-smartcity}
       DB_USERNAME: ${DB_USERNAME:-smartcity}
       DB_PASSWORD: ${DB_PASSWORD:-smartcity}
+      # Optional least-privilege app role (created by Flyway V5). When unset
+      # the app reuses DB_USERNAME / DB_PASSWORD. In prod, set both to a
+      # distinct user/password so the runtime cannot run DDL.
+      DB_APP_USERNAME: ${DB_APP_USERNAME:-}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-}
       REDIS_URL: redis://redis:6379
       MQTT_URL: tcp://mosquitto:1883
       MEDIAMTX_HLS_URL: ${MEDIAMTX_HLS_URL_PUBLIC:-http://localhost:8888}
@@ -80,11 +85,19 @@ services:
       MEDIAMTX_API_PASSWORD: ${MEDIAMTX_API_PASSWORD:?MEDIAMTX_API_PASSWORD must be set}
       MEDIAMTX_SHARED_SECRET: ${MEDIAMTX_SHARED_SECRET:?MEDIAMTX_SHARED_SECRET must be set}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY must be set}
+      MEDIAMTX_SIGNING_KEY: ${MEDIAMTX_SIGNING_KEY:?MEDIAMTX_SIGNING_KEY must be set}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
       MFA_VERIFY_URL: ${MFA_VERIFY_URL:?MFA_VERIFY_URL must be set}
       PASSWORD_RESET_URL: ${PASSWORD_RESET_URL:?PASSWORD_RESET_URL must be set}
       ACCOUNT_INVITE_URL: ${ACCOUNT_INVITE_URL:?ACCOUNT_INVITE_URL must be set}
       MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:?MEDIA_PUBLIC_BASE_URL must be set}
+      MAIL_HOST: ${MAIL_HOST:?MAIL_HOST must be set}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:?MAIL_USERNAME must be set}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:?MAIL_PASSWORD must be set}
+      MAIL_FROM: ${MAIL_FROM:?MAIL_FROM must be set}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
     ports:
       - "3001:3001"
     healthcheck:

@@ -111,32 +111,46 @@ and `hls.staging.corevia.ro`. Renewal is automatic; expiry warnings go to
 `ACME_EMAIL`. Cert state persisted in the `caddy_data` named volume — survives
 container recreation.
 
+## Config split (application.yml profiles)
+
+- `application.yml` — shared. Business config and env-driven keys. No
+  environment-specific defaults.
+- `application-local.yml` — loaded by default (`spring.profiles.default: local`).
+  Localhost defaults for everything, dev sentinels for secrets, `dev-mode: true`,
+  `app.dev-seed.*` for seeding super-admins.
+- `application-prod.yml` — loaded when `SPRING_PROFILE=prod`. Hardcodes
+  `mfa.dev-mode: false` and `password-reset.dev-mode: false` (env can't flip
+  them). Holds `app.bootstrap-admin.email`. `ProdConfigGuard` additionally
+  refuses to boot if any value is a known dev sentinel, contains localhost, or
+  re-enables dev-mode.
+
+Multi super-admin seeding (works in both profiles, same env var):
+`DEV_ADMIN_ACCOUNTS=a@x:pw1,b@y:pw2`
+- **local/dev** — `DevUserSeeder` (`@Profile("!prod")`) **upserts** on every
+  boot: handy for resetting dev passwords from env.
+- **prod** — `ProdAdminSeeder` (`@Profile("prod")`) is **create-only**: rows
+  are inserted only if missing, never overwritten. Each admin logs in with the
+  initial password and changes it via the app; subsequent restarts are no-ops.
+  Safe to leave the env var set across deploys.
+
+The single-admin random-password fallback `ProdAdminBootstrap`
+(`BOOTSTRAP_ADMIN_EMAIL`) is still wired but unused by default.
+
 ## Outstanding work (not blockers for staging — needed before real prod)
 
-1. **Multi super-admin from env.** Today `DevUserSeeder.java` seeds exactly one
-   admin from `DEV_ADMIN_EMAIL` / `DEV_ADMIN_PASSWORD`. Change to accept a list
-   (e.g. `SUPER_ADMIN_EMAILS=a@x,b@y`) and either seed each with a per-user
-   password env or send them password-reset invites on first start.
+1. **Rotate and remove the committed Gmail app password.** A real Gmail token
+   (`sjps dmat vayh xoka`) is hardcoded in
+   `smartcity-be/src/main/resources/application-local.yml`. It only affects the
+   local profile (prod rejects it via `ProdConfigGuard`), but it's still a live
+   credential in git history. Rotate the Google account first, then replace
+   the literal with a placeholder or env var.
 
-2. **Strip hardcoded defaults in `application.yml`.** Search for
-   `TODO: remove dev default before prod`. Highest priority:
-    - Gmail SMTP creds are committed (`spring.mail.password`)
-    - `app.dev-seed.email/password` defaults
-    - `app.mediamtx.*` dev secrets
-    - DB connection defaults
-   Remove the `:<default>` part of each `${VAR:default}` so the app refuses to
-   start without the env var. Update `.env.production.example` to require them.
+2. **Mosquitto auth.** `mosquitto.conf` is `allow_anonymous true`. Add a
+   password file + `allow_anonymous false` before any real device traffic.
 
-3. **Mosquitto auth.** `mosquitto.conf` is currently `allow_anonymous true`.
-   Add a password file + `allow_anonymous false` before any real device traffic.
-
-4. **DB backups.** No backups in place. For real prod: `pg_dump` on cron to an
+3. **DB backups.** None in place. For real prod: `pg_dump` on cron to an
    off-box location (S3 / restic / Hetzner Storage Box).
 
-5. **Frontend BACKEND_URL is build-time.** Currently baked into the Next.js
-   image as `http://backend:3001` via Dockerfile ENV. If the backend ever moves
-   to a different hostname, rebuild the FE image. Acceptable for now.
-
-6. **MFA dev-mode.** `application.yml` sets `MFA_DEV_MODE=true` by default,
-   which probably bypasses real verification. Flip to false in `.env` for any
-   real staging test.
+4. **Frontend BACKEND_URL is build-time.** Baked into the Next.js image as
+   `http://backend:3001` via Dockerfile `ENV`. If the backend ever moves to a
+   different hostname, rebuild the FE image. Acceptable for now.
