@@ -7,7 +7,11 @@ name: corevia
 
 services:
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    # Pin to a fixed minor. timescale/timescaledb:latest-pg16 is mutable and
+    # has rotated under us before (dev-preview .so versions ended up in the
+    # PG catalog, then the next pull replaced them with a stable that didn't
+    # carry the dev .so file -- connections fail at extension load).
+    image: timescale/timescaledb:2.20.3-pg16
     container_name: corevia-db
     environment:
       # User / db name are pinned to 'smartcity' because application-prod.yml
