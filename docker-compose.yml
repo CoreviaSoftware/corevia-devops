@@ -10,15 +10,18 @@ services:
     image: timescale/timescaledb:latest-pg16
     container_name: corevia-db
     environment:
-      POSTGRES_USER: ${DB_USERNAME:-smartcity}
+      # User / db name are pinned to 'smartcity' because application-prod.yml
+      # and application-local.yml hardcode them. Don't parameterize -- a typo
+      # in .env would silently break Flyway.
+      POSTGRES_USER: smartcity
       POSTGRES_PASSWORD: ${DB_PASSWORD:-smartcity}
-      POSTGRES_DB: ${DB_NAME:-smartcity}
+      POSTGRES_DB: smartcity
     ports:
       - "${DB_PORT_HOST:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-smartcity}"]
+      test: ["CMD-SHELL", "pg_isready -U smartcity"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -65,39 +68,21 @@ services:
     image: ghcr.io/coreviasoftware/corevia-be:${IMAGE_TAG_BE:-latest}
     container_name: corevia-backend
     environment:
+      # Non-secret config (DB host/port/name/user, Redis/MQTT URLs, mail host
+      # and user, CORS, public URLs, MediaMTX URLs and api username,
+      # bootstrap-admin email) is hardcoded in application-prod.yml and
+      # application-local.yml. Only secrets pass through env.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-prod}
       PORT: 3001
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-smartcity}
-      DB_USERNAME: ${DB_USERNAME:-smartcity}
-      DB_PASSWORD: ${DB_PASSWORD:-smartcity}
-      # Optional least-privilege app role (created by Flyway V5). When unset
-      # the app reuses DB_USERNAME / DB_PASSWORD. In prod, set both to a
-      # distinct user/password so the runtime cannot run DDL.
-      DB_APP_USERNAME: ${DB_APP_USERNAME:-}
-      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-}
-      REDIS_URL: redis://redis:6379
-      MQTT_URL: tcp://mosquitto:1883
-      MEDIAMTX_HLS_URL: ${MEDIAMTX_HLS_URL_PUBLIC:-http://localhost:8888}
-      MEDIAMTX_API_URL: http://mediamtx:9997
-      MEDIAMTX_API_USERNAME: ${MEDIAMTX_API_USERNAME:?MEDIAMTX_API_USERNAME must be set}
-      MEDIAMTX_API_PASSWORD: ${MEDIAMTX_API_PASSWORD:?MEDIAMTX_API_PASSWORD must be set}
-      MEDIAMTX_SHARED_SECRET: ${MEDIAMTX_SHARED_SECRET:?MEDIAMTX_SHARED_SECRET must be set}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD must be set}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY must be set}
-      MEDIAMTX_SIGNING_KEY: ${MEDIAMTX_SIGNING_KEY:?MEDIAMTX_SIGNING_KEY must be set}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
-      MFA_VERIFY_URL: ${MFA_VERIFY_URL:?MFA_VERIFY_URL must be set}
-      PASSWORD_RESET_URL: ${PASSWORD_RESET_URL:?PASSWORD_RESET_URL must be set}
-      ACCOUNT_INVITE_URL: ${ACCOUNT_INVITE_URL:?ACCOUNT_INVITE_URL must be set}
-      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:?MEDIA_PUBLIC_BASE_URL must be set}
-      MAIL_HOST: ${MAIL_HOST:?MAIL_HOST must be set}
-      MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_USERNAME: ${MAIL_USERNAME:?MAIL_USERNAME must be set}
       MAIL_PASSWORD: ${MAIL_PASSWORD:?MAIL_PASSWORD must be set}
-      MAIL_FROM: ${MAIL_FROM:?MAIL_FROM must be set}
-      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      MEDIAMTX_API_PASSWORD: ${MEDIAMTX_API_PASSWORD:?MEDIAMTX_API_PASSWORD must be set}
+      MEDIAMTX_SIGNING_KEY: ${MEDIAMTX_SIGNING_KEY:?MEDIAMTX_SIGNING_KEY must be set}
+      MEDIAMTX_SHARED_SECRET: ${MEDIAMTX_SHARED_SECRET:?MEDIAMTX_SHARED_SECRET must be set}
+      DEV_ADMIN_ACCOUNTS: ${DEV_ADMIN_ACCOUNTS:-}
     ports:
       - "3001:3001"
     healthcheck:
