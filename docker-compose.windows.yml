@@ -1,0 +1,77 @@
+# Windows deployment overlay. One self-contained stack per Windows box,
+# reached directly by http://<host-ip>:<port> — no domain, no TLS, no Caddy.
+#
+# Usage on the box (from the repo root):
+#   docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
+# or just run scripts/deploy.ps1
+#
+# Backend runs under the 'prod' profile (application-prod.yml). The public URLs
+# baked for staging.corevia.ro are now env-driven — see the .env keys below and
+# the required backend change in WINDOWS_DEPLOY.md.
+
+services:
+  postgres:
+    restart: unless-stopped
+    ports: !reset []          # internal only — nothing off-box talks to Postgres
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  redis:
+    restart: unless-stopped
+    ports: !reset []          # internal only
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  mosquitto:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  mediamtx:
+    restart: unless-stopped
+    ports: !override          # 8554 RTSP for cameras, 8888 HLS for browsers.
+      - "8554:8554"           # the 9997 admin API stays internal (backend only).
+      - "8888:8888"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  backend:
+    restart: unless-stopped
+    ports: !reset []          # reached via the frontend's /api proxy, not directly
+    environment:
+      # Per-box public URLs. Each box sets these to its own http://<ip>:3030
+      # (and :8888 for HLS) in .env. application-prod.yml reads them via env.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
+      MEDIAMTX_HLS_URL_PUBLIC: ${MEDIAMTX_HLS_URL_PUBLIC:?MEDIAMTX_HLS_URL_PUBLIC must be set}
+      MFA_VERIFY_URL: ${MFA_VERIFY_URL:?MFA_VERIFY_URL must be set}
+      PASSWORD_RESET_URL: ${PASSWORD_RESET_URL:?PASSWORD_RESET_URL must be set}
+      ACCOUNT_INVITE_URL: ${ACCOUNT_INVITE_URL:?ACCOUNT_INVITE_URL must be set}
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:?MEDIA_PUBLIC_BASE_URL must be set}
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      # prod profile moves actuator to management.server.port=9001 (separate
+      # from the app's 3001) — probe the management port for liveness.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9001/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  frontend:
+    restart: unless-stopped
+    # base maps 3030:3030 — the app is served at http://<host-ip>:3030
+    deploy:
+      resources:
+        limits:
+          memory: 512m

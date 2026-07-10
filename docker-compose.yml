@@ -1,9 +1,10 @@
 name: corevia
 
-# Default stack: pulls pre-built images from GHCR. Works as-is on a server.
+# Shared base: pulls pre-built images from GHCR.
 # For local builds from sibling smartcity-be/ and smartcity-fe/ source trees,
 # add the -f docker-compose.local.yml overlay (see that file's header).
-# For the production deployment with Caddy + TLS, add docker-compose.prod.yml.
+# For the Windows deployment (IP:PORT, restart policies, prod profile), add
+# the -f docker-compose.windows.yml overlay — this is the normal deploy path.
 
 services:
   postgres:

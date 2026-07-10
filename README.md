@@ -1,156 +1,113 @@
-# CoreVia — staging deployment
+# CoreVia — Windows deployment
 
-Reference for the Hetzner staging server. Single source of truth for "what's
-running, where, and how do I push a change."
+Reference for the two Windows boxes. Single source of truth for "what's running,
+where, and how do I push a change." First-time setup + auto-start:
+see [WINDOWS_DEPLOY.md](WINDOWS_DEPLOY.md).
 
-## What's running
+Two **independent** boxes, each running the full stack from its own `.env`.
+Reached directly by IP — no domain, no TLS. Replace `<IP>` with each box's IP.
 
-| Service     | URL / endpoint                              | Notes |
-|-------------|---------------------------------------------|-------|
-| Frontend    | https://staging.corevia.ro                  | Next.js standalone, proxied via Caddy |
-| Backend API | https://staging.corevia.ro/api/...          | Next.js rewrites `/api/*` → `backend:3001` |
-| HLS streams | https://hls.staging.corevia.ro              | MediaMTX HLS, behind Caddy |
-| RTSP ingest | rtsp://178.105.135.16:8554                  | for cameras to publish to |
-| MQTT broker | mqtt://178.105.135.16:1883                  | anonymous auth (staging only) |
-| Postgres    | internal `postgres:5432`                    | TimescaleDB on pg16, volume `postgres_data` |
-| Redis       | internal `redis:6379`                       | volume `redis_data` |
+## What's running (per box)
+
+| Service     | Endpoint                          | Notes |
+|-------------|-----------------------------------|-------|
+| Frontend    | `http://<IP>:3030`                | Next.js; also proxies `/api/*` → `backend:3001` |
+| Backend API | `http://<IP>:3030/api/...`        | reached only through the frontend proxy (not published) |
+| HLS streams | `http://<IP>:8888`                | MediaMTX HLS for the browser |
+| RTSP ingest | `rtsp://<IP>:8554`                | cameras publish here |
+| MQTT broker | `mqtt://<IP>:1883`                | anonymous auth (see notes) |
+| Postgres    | internal `postgres:5432`          | TimescaleDB pg16, volume `postgres_data` |
+| Redis       | internal `redis:6379`             | volume `redis_data` |
 
 Container names: `corevia-frontend`, `corevia-backend`, `corevia-db`,
-`corevia-redis`, `corevia-mqtt`, `corevia-mediamtx`, `corevia-caddy`.
+`corevia-redis`, `corevia-mqtt`, `corevia-mediamtx`.
 
-## Repos
+## Repos & images
 
-| Repo                                | Role                                    |
-|-------------------------------------|-----------------------------------------|
-| CoreviaSoftware/smartcity-be        | Java/Spring backend. CI pushes image to `ghcr.io/coreviasoftware/corevia-be` on push to main. |
-| CoreviaSoftware/smartcity-fe        | Next.js frontend. CI pushes image to `ghcr.io/coreviasoftware/corevia-fe` on push to main. |
-| CoreviaSoftware/corevia-devops      | This repo. Compose, Caddyfile, scripts. Public. |
+| Repo                           | Image |
+|--------------------------------|-------|
+| CoreviaSoftware/smartcity-be   | `ghcr.io/coreviasoftware/corevia-be` |
+| CoreviaSoftware/smartcity-fe   | `ghcr.io/coreviasoftware/corevia-fe` |
+| CoreviaSoftware/corevia-devops | this repo — compose, scripts (public) |
 
-Build workflow file in each app repo: `.github/workflows/build-and-push.yml`.
-
-## Server
-
-- **Host:** Hetzner Cloud CX23, Ubuntu 24.04, Nuremberg/Helsinki
-- **Public IP:** 178.105.135.16
-- **DNS:** A records on corevia.ro zone (managed in the existing cPanel)
-    - `staging.corevia.ro` → 178.105.135.16
-    - `hls.staging.corevia.ro` → 178.105.135.16
-- **SSH:** `ssh deploy@178.105.135.16` (root login also works but use deploy)
-- **Working dir:** `/opt/corevia` (this repo, cloned)
-- **Env file:** `/opt/corevia/.env` (gitignored — only lives on server)
-- **Firewall (ufw):** 22, 80, 443, 1883, 8554 open
+Images are built + pushed by each app repo's `Build and push image` GitHub
+Action (manual `workflow_dispatch`). Boxes pull from GHCR — they never build.
 
 ## Deploy flow
 
-```bash
-# 1. push code
-cd smartcity-be (or smartcity-fe) && git push origin main
+On the box, from the repo root:
 
-# 2. wait ~3 min for GH Actions build (Build and push image workflow)
-
-# 3. pull and restart on server
-ssh deploy@178.105.135.16
-cd /opt/corevia
-bash scripts/deploy.sh
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
 ```
 
-`deploy.sh` runs `docker compose -f docker-compose.yml -f docker-compose.prod.yml pull && up -d`.
+`deploy.ps1` waits for the Docker engine, then
+`docker compose -f docker-compose.yml -f docker-compose.windows.yml pull && up -d`.
 Only services whose image SHA changed get recreated.
 
-To pin a specific build (rollback or freeze staging):
-```bash
-IMAGE_TAG_BE=sha-abc1234 bash scripts/deploy.sh
+Pin a specific build (rollback / freeze):
+```powershell
+$env:IMAGE_TAG_BE="sha-abc1234"; powershell -File scripts\deploy.ps1
 ```
 
 ## Common ops
 
-```bash
-# all logs, tail
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+```powershell
+$c = "docker compose -f docker-compose.yml -f docker-compose.windows.yml"
 
-# one service
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
-
-# restart one service
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate backend
-
-# stack status
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-
-# backend health
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend wget -qO- http://localhost:3001/actuator/health
-
-# DB shell
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres psql -U smartcity -d smartcity
+iex "$c ps"                 # stack status
+iex "$c logs -f"           # all logs, tail
+iex "$c logs -f backend"   # one service
+iex "$c up -d --force-recreate backend"   # restart one service
+iex "$c exec postgres psql -U smartcity -d smartcity"   # DB shell
 ```
 
-## Secrets layout (.env on the server)
+Backend health (management port): `iex "$c exec backend wget -qO- http://localhost:9001/actuator/health"`
 
-| Var                       | What it does |
-|---------------------------|--------------|
-| `DOMAIN`                  | Caddy site name, used in Caddyfile |
-| `ACME_EMAIL`              | Let's Encrypt contact |
-| `DB_*`                    | Postgres user/password/db |
-| `JWT_SECRET`              | HS256 signing key (≥ 256 bits) |
-| `MEDIAMTX_*`              | MediaMTX shared secret + API creds |
-| `MEDIAMTX_HLS_URL_PUBLIC` | URL handed to the browser for HLS playback |
-| `CORS_ALLOWED_ORIGINS`    | Spring CORS allowlist; must include public origin |
-| `MFA_VERIFY_URL`          | URL in MFA emails |
-| `PASSWORD_RESET_URL`      | URL in password reset emails |
-| `ACCOUNT_INVITE_URL`      | URL in account invite emails |
-| `MEDIA_PUBLIC_BASE_URL`   | Public origin for media file URLs |
-| `IMAGE_TAG_BE/FE`         | optional pin to a specific image |
+## Auto-start on reboot
 
-Rotate any value: edit `.env`, then
-`docker compose ... up -d --force-recreate backend`.
+Handled by `scripts\windows-autostart.ps1` (run once, elevated). Four layers:
+Windows auto-login → Docker Desktop starts at login → `restart: unless-stopped`
+brings containers back with the engine → a logon Scheduled Task runs `deploy.ps1`.
+Full steps in [WINDOWS_DEPLOY.md](WINDOWS_DEPLOY.md).
 
-## TLS
+## Secrets & config (`.env`)
 
-Caddy auto-issues + auto-renews Let's Encrypt certs for `staging.corevia.ro`
-and `hls.staging.corevia.ro`. Renewal is automatic; expiry warnings go to
-`ACME_EMAIL`. Cert state persisted in the `caddy_data` named volume — survives
-container recreation.
+Each box has its own `.env` (gitignored). Copy `.env.windows.example` and set
+this box's IP in the URL vars plus real secrets. The `.env` carries:
+
+- **Per-box URLs** — `CORS_ALLOWED_ORIGINS`, `MFA_VERIFY_URL`,
+  `PASSWORD_RESET_URL`, `ACCOUNT_INVITE_URL`, `MEDIA_PUBLIC_BASE_URL` all point
+  at `http://<IP>:3030`; `MEDIAMTX_HLS_URL_PUBLIC` at `http://<IP>:8888`.
+- **Secrets** — `DB_PASSWORD`, `DB_APP_PASSWORD`, `JWT_SECRET`, `APP_SECRET_KEY`,
+  `MAIL_PASSWORD`, `MEDIAMTX_API_PASSWORD`, `MEDIAMTX_SHARED_SECRET`,
+  `MEDIAMTX_SIGNING_KEY`.
+- Optional `DEV_ADMIN_ACCOUNTS`, `IMAGE_TAG_BE/FE`.
+
+Everything else (DB host/name/user, Redis/MQTT URLs, SMTP host/user, MediaMTX
+API URL, mgmt port) is hardcoded in `application-prod.yml`. Rotate a value:
+edit `.env`, then `... up -d --force-recreate backend`.
 
 ## Config split (application.yml profiles)
 
-- `application.yml` — shared. Business config and env-driven keys. No
-  environment-specific defaults.
-- `application-local.yml` — loaded by default (`spring.profiles.default: local`).
-  Localhost defaults for everything, dev sentinels for secrets, `dev-mode: true`,
-  `app.dev-seed.*` for seeding super-admins.
-- `application-prod.yml` — loaded when `SPRING_PROFILE=prod`. Hardcodes
-  `mfa.dev-mode: false` and `password-reset.dev-mode: false` (env can't flip
-  them). Holds `app.bootstrap-admin.email`. `ProdConfigGuard` additionally
-  refuses to boot if any value is a known dev sentinel, contains localhost, or
-  re-enables dev-mode.
+- `application.yml` — shared, env-driven keys.
+- `application-local.yml` — default profile; localhost + dev sentinels, `dev-mode: true`.
+- `application-prod.yml` — activated by `SPRING_PROFILE=prod`. Hardcodes infra
+  and `dev-mode: false`. The public URLs (CORS, MFA/reset/invite, media, HLS)
+  read from env so one image serves both boxes. `ProdConfigGuard` refuses to
+  boot on a dev sentinel, a `localhost`/`127.0.0.1` URL, or re-enabled dev-mode.
 
-Multi super-admin seeding (works in both profiles, same env var):
-`DEV_ADMIN_ACCOUNTS=a@x:pw1,b@y:pw2`
-- **local/dev** — `DevUserSeeder` (`@Profile("!prod")`) **upserts** on every
-  boot: handy for resetting dev passwords from env.
-- **prod** — `ProdAdminSeeder` (`@Profile("prod")`) is **create-only**: rows
-  are inserted only if missing, never overwritten. Each admin logs in with the
-  initial password and changes it via the app; subsequent restarts are no-ops.
-  Safe to leave the env var set across deploys.
+Multi super-admin seeding (`DEV_ADMIN_ACCOUNTS=a@x:pw1,b@y:pw2`): create-only in
+prod (`ProdAdminSeeder`) — inserts if missing, never overwrites. Safe across deploys.
 
-The single-admin random-password fallback `ProdAdminBootstrap`
-(`BOOTSTRAP_ADMIN_EMAIL`) is still wired but unused by default.
+## Notes / before real production
 
-## Outstanding work (not blockers for staging — needed before real prod)
-
-1. **Rotate and remove the committed Gmail app password.** A real Gmail token
-   (`sjps dmat vayh xoka`) is hardcoded in
-   `smartcity-be/src/main/resources/application-local.yml`. It only affects the
-   local profile (prod rejects it via `ProdConfigGuard`), but it's still a live
-   credential in git history. Rotate the Google account first, then replace
-   the literal with a placeholder or env var.
-
-2. **Mosquitto auth.** `mosquitto.conf` is `allow_anonymous true`. Add a
-   password file + `allow_anonymous false` before any real device traffic.
-
-3. **DB backups.** None in place. For real prod: `pg_dump` on cron to an
-   off-box location (S3 / restic / Hetzner Storage Box).
-
-4. **Frontend BACKEND_URL is build-time.** Baked into the Next.js image as
-   `http://backend:3001` via Dockerfile `ENV`. If the backend ever moves to a
-   different hostname, rebuild the FE image. Acceptable for now.
+1. **Mosquitto is `allow_anonymous true`.** Fine on a trusted LAN; add a
+   password file + `allow_anonymous false` before untrusted device traffic.
+2. **No DB backups.** Add `pg_dump` on a schedule to an off-box location.
+3. **Mail dependency.** MFA + password-reset (and thus login) need outbound
+   SMTP to `mail.corevia.ro:587` with a valid `MAIL_PASSWORD`. If a box can't
+   reach it, users can't complete MFA. Host/user are hardcoded in
+   `application-prod.yml` — changing SMTP means a backend edit + image rebuild.
+4. **Committed Gmail app password** in `application-local.yml` (local profile
+   only; prod rejects it). Rotate + replace with a placeholder.
