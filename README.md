@@ -100,11 +100,38 @@ edit `.env`, then `... up -d --force-recreate backend`.
 Multi super-admin seeding (`DEV_ADMIN_ACCOUNTS=a@x:pw1,b@y:pw2`): create-only in
 prod (`ProdAdminSeeder`) — inserts if missing, never overwrites. Safe across deploys.
 
+## Database backups
+
+TimescaleDB dump/restore, per box (Postgres has no off-box published port, so
+these dump *inside* the `corevia-db` container and copy the file out).
+
+```powershell
+# one-off backup -> C:\corevia-backups\smartcity-<timestamp>.dump (keeps 14 days)
+powershell -ExecutionPolicy Bypass -File scripts\backup-db.ps1
+
+# same, but off-box onto a UNC share, keeping 30 days
+powershell -File scripts\backup-db.ps1 -BackupDir "\\server\share\corevia-backups" -RetentionDays 30
+
+# schedule it daily at 03:00 (run once, elevated — runs as SYSTEM, no password)
+powershell -File scripts\schedule-db-backup.ps1
+
+# restore a dump (DESTRUCTIVE — drops the DB; handles TimescaleDB pre/post-restore)
+powershell -File scripts\restore-db.ps1 -DumpFile C:\corevia-backups\smartcity-<ts>.dump -Confirm
+docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --force-recreate backend
+```
+
+`backup-db.ps1` uses `pg_dump -Fc`; `restore-db.ps1` wraps `pg_restore` in
+`timescaledb_pre_restore()` / `timescaledb_post_restore()` (plain pg_restore
+mangles hypertables). Point `-BackupDir` at a network/external location to keep
+copies off the box.
+
 ## Notes / before real production
 
 1. **Mosquitto is `allow_anonymous true`.** Fine on a trusted LAN; add a
    password file + `allow_anonymous false` before untrusted device traffic.
-2. **No DB backups.** Add `pg_dump` on a schedule to an off-box location.
+2. **DB backups** — `scripts\backup-db.ps1` + `scripts\schedule-db-backup.ps1`
+   (see "Database backups" above). Point `-BackupDir` off-box; verify with a
+   test `restore-db.ps1` before relying on them.
 3. **Mail dependency.** MFA + password-reset (and thus login) need outbound
    SMTP to `mail.corevia.ro:587` with a valid `MAIL_PASSWORD`. If a box can't
    reach it, users can't complete MFA. Host/user are hardcoded in

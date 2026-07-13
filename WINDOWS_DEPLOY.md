@@ -132,6 +132,48 @@ docker compose -f docker-compose.yml -f docker-compose.windows.yml ps
 
 should show every service **Up** (backend **healthy**). Load `http://<IP>:3030`.
 
+## 9. Schedule database backups
+
+The DB lives only in the `postgres_data` volume on this box — set up a daily dump.
+Run once, **as Administrator** (no credentials needed — the task runs as SYSTEM):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\schedule-db-backup.ps1
+```
+
+This registers the `CoreVia-DB-Backup` task (running as `NT AUTHORITY\SYSTEM`,
+no password), which runs `scripts\backup-db.ps1` daily at 03:00 →
+`C:\corevia-backups\smartcity-<timestamp>.dump` (custom-format `pg_dump`, 14-day
+retention). **Verify it now** — SYSTEM must be able to reach the Docker engine,
+so run the task once and confirm a dump actually lands:
+
+```powershell
+Start-ScheduledTask -TaskName "CoreVia-DB-Backup"
+Start-Sleep 20
+dir C:\corevia-backups                                 # expect a non-zero .dump
+Get-ScheduledTaskInfo -TaskName "CoreVia-DB-Backup"    # LastTaskResult should be 0
+```
+
+**Get the copies off the box.** Point `-BackupDir` at a mapped network drive or
+external disk so a dead box doesn't take the only backup with it:
+
+```powershell
+powershell -File scripts\schedule-db-backup.ps1 -BackupDir "Z:\corevia-backups" -RetentionDays 30
+```
+
+> Note: a SYSTEM task sees drives differently — a mapped drive letter (`Z:`)
+> established by a logged-in user won't exist for SYSTEM. Use a UNC path
+> (`\\server\share\corevia-backups`) that SYSTEM's machine account can reach,
+> or a local/attached disk.
+
+Restore a dump (**destructive** — drops the DB, then handles the TimescaleDB
+pre/post-restore steps):
+
+```powershell
+powershell -File scripts\restore-db.ps1 -DumpFile C:\corevia-backups\smartcity-<ts>.dump -Confirm
+docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --force-recreate backend
+```
+
 ---
 
 ## Updating later
