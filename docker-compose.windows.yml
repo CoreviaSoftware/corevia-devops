@@ -71,6 +71,10 @@ services:
   frontend:
     restart: unless-stopped
     # base maps 3030:3030 — the app is served at http://<host-ip>:3030
+    # 3031 is the same app again: the Signworld proxy needs its own browser origin,
+    # and an IP-only box has no second hostname to give it. Not opened by users.
+    ports:
+      - "3031:3030"
     deploy:
       resources:
         limits:

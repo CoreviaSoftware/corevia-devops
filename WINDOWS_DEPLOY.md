@@ -93,6 +93,7 @@ Inbound TCP: **3030** (app), **8888** (HLS), **8554** (RTSP), **1883** (MQTT).
 
 ```powershell
 New-NetFirewallRule -DisplayName "CoreVia app"  -Direction Inbound -Protocol TCP -LocalPort 3030 -Action Allow
+New-NetFirewallRule -DisplayName "CoreVia SW"   -Direction Inbound -Protocol TCP -LocalPort 3031 -Action Allow
 New-NetFirewallRule -DisplayName "CoreVia HLS"  -Direction Inbound -Protocol TCP -LocalPort 8888 -Action Allow
 New-NetFirewallRule -DisplayName "CoreVia RTSP" -Direction Inbound -Protocol TCP -LocalPort 8554 -Action Allow
 New-NetFirewallRule -DisplayName "CoreVia MQTT" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow
@@ -184,6 +185,42 @@ docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --force
 cd C:\corevia
 powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
 ```
+
+## Signworld assisted publishing rollout
+
+Live today: credential prefill only. `SIGNWORLD_USERNAME`, `SIGNWORLD_PASSWORD`
+and `WEBMAIL_*` are read by the backend and served to authenticated admins, and
+the frontend embeds the portal through its own origin on port 3031. Assisted
+publishing itself is not shipped — the backend is at migration V27. The steps
+below apply once V28 lands; the env keys it needs get added to the compose files
+in the same change, so there is nothing to pre-set now.
+
+Signworld credentials belong only in the server `.env`; never add them to the
+frontend or commit them.
+
+Before applying migration V28, create a timestamped directory outside the repo
+and save a database dump, `.env`, compose files, current backend/frontend image
+IDs, and service health. Restrict the directory ACL to administrators.
+
+Validate without printing the expanded compose configuration:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.windows.yml config --quiet
+```
+
+Deploy only the application services:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --no-deps backend
+docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --no-deps frontend
+```
+
+Do not restart PostgreSQL, Redis, Mosquitto, or MediaMTX.
+After backend health is green, verify V28, company `13494`, terminal
+`signworld.inova`, and machine `8238`; then run the CAPTCHA, e-mail code,
+`PUBLISHING` to `PUBLISHED`, physical-screen, and manual-package checks from the
+Totemuri editor. Roll back by restoring the previous backend/frontend image tags;
+the additive V28 tables and nullable `machine_id` column may remain.
 
 ## Local full-stack build (optional, dev machine only)
 

@@ -88,6 +88,13 @@ services:
       MEDIAMTX_SIGNING_KEY: ${MEDIAMTX_SIGNING_KEY:?MEDIAMTX_SIGNING_KEY must be set}
       MEDIAMTX_SHARED_SECRET: ${MEDIAMTX_SHARED_SECRET:?MEDIAMTX_SHARED_SECRET must be set}
       DEV_ADMIN_ACCOUNTS: ${DEV_ADMIN_ACCOUNTS:-}
+      # Portal credentials the frontend prefills into the Signworld and webmail
+      # logins. Served only to authenticated admins; never exposed as NEXT_PUBLIC_*.
+      SIGNWORLD_USERNAME: ${SIGNWORLD_USERNAME:-}
+      SIGNWORLD_PASSWORD: ${SIGNWORLD_PASSWORD:-}
+      WEBMAIL_LOGIN_URL: ${WEBMAIL_LOGIN_URL:-}
+      WEBMAIL_USER: ${WEBMAIL_USER:-}
+      WEBMAIL_PASSWORD: ${WEBMAIL_PASSWORD:-}
     ports:
       - "3001:3001"
     healthcheck:
