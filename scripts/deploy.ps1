@@ -15,6 +15,16 @@ if (-not (Test-Path ".env")) {
     Write-Error ".env missing. Copy .env.windows.example to .env and edit it (set this box's IP + secrets)."
 }
 
+$SignworldFirewallRule = "CoreVia Signworld proxy"
+if (-not (Get-NetFirewallRule -DisplayName $SignworldFirewallRule -ErrorAction SilentlyContinue)) {
+    try {
+        New-NetFirewallRule -DisplayName $SignworldFirewallRule -Direction Inbound -Protocol TCP -LocalPort 3031 -Action Allow -ErrorAction Stop | Out-Null
+        Write-Host "==> Opened inbound TCP 3031 for the isolated Signworld proxy."
+    } catch {
+        Write-Warning "Could not open TCP 3031 automatically. Run this script as Administrator or add the '$SignworldFirewallRule' firewall rule manually."
+    }
+}
+
 $Compose = @("compose", "-f", "docker-compose.yml", "-f", "docker-compose.windows.yml")
 
 Write-Host "==> Waiting for the Docker engine..."
@@ -36,6 +46,15 @@ if ($LASTEXITCODE -ne 0) { Write-Error "docker compose pull failed (are you logg
 Write-Host "==> Starting / updating stack"
 docker @Compose up -d --remove-orphans
 if ($LASTEXITCODE -ne 0) { Write-Error "docker compose up failed" }
+
+$SignworldProxySocket = [System.Net.Sockets.TcpClient]::new()
+try {
+    $SignworldProxySocket.Connect("127.0.0.1", 3031)
+} catch {
+    Write-Error "Signworld proxy is not listening on port 3031 after deployment. Check the frontend port mappings."
+} finally {
+    $SignworldProxySocket.Dispose()
+}
 
 Write-Host "==> Stack status"
 docker @Compose ps

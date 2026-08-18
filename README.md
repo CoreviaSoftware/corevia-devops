@@ -12,6 +12,7 @@ Reached directly by IP — no domain, no TLS. Replace `<IP>` with each box's IP.
 | Service     | Endpoint                          | Notes |
 |-------------|-----------------------------------|-------|
 | Frontend    | `http://<IP>:3030`                | Next.js; also proxies `/api/*` → `backend:3001` |
+| Signworld   | `http://<IP>:3031`                | Isolated origin routed to the frontend container |
 | Backend API | `http://<IP>:3030/api/...`        | reached only through the frontend proxy (not published) |
 | HLS streams | `http://<IP>:8888`                | MediaMTX HLS for the browser |
 | RTSP ingest | `rtsp://<IP>:8554`                | cameras publish here |

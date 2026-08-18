@@ -70,7 +70,10 @@ services:
 
   frontend:
     restart: unless-stopped
-    # base maps 3030:3030 — the app is served at http://<host-ip>:3030
+    # 3030 serves SmartCity. Signworld uses 3031 as a separate browser origin,
+    # while both host ports reach the same Next.js server inside the container.
+    ports:
+      - "3031:3030"
     deploy:
       resources:
         limits:

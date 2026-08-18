@@ -89,10 +89,12 @@ Set every URL to **this box's IP** (e.g. `http://192.168.1.50:3030`, HLS on
 
 ## 5. Open the Windows Firewall ports
 
-Inbound TCP: **3030** (app), **8888** (HLS), **8554** (RTSP), **1883** (MQTT).
+Inbound TCP: **3030** (app), **3031** (Signworld proxy), **8888** (HLS),
+**8554** (RTSP), **1883** (MQTT).
 
 ```powershell
 New-NetFirewallRule -DisplayName "CoreVia app"  -Direction Inbound -Protocol TCP -LocalPort 3030 -Action Allow
+New-NetFirewallRule -DisplayName "CoreVia Signworld proxy" -Direction Inbound -Protocol TCP -LocalPort 3031 -Action Allow
 New-NetFirewallRule -DisplayName "CoreVia HLS"  -Direction Inbound -Protocol TCP -LocalPort 8888 -Action Allow
 New-NetFirewallRule -DisplayName "CoreVia RTSP" -Direction Inbound -Protocol TCP -LocalPort 8554 -Action Allow
 New-NetFirewallRule -DisplayName "CoreVia MQTT" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow
