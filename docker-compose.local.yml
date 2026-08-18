@@ -18,3 +18,7 @@ services:
     image: !reset null
     build:
       context: ./smartcity-fe
+      args:
+        # Next inlines NEXT_PUBLIC_* into the bundle at build time, server side
+        # included, so the Signworld proxy origin can only be set here.
+        NEXT_PUBLIC_SIGNWORLD_PROXY_ORIGIN: ${SIGNWORLD_PROXY_ORIGIN:-}

@@ -29,62 +29,56 @@ The FE shows total + delta over a selected window (today / 7d / 30d), computed b
 Add `Device.capabilities` jsonb:
 
 ```json
-{ "hasBattery": true, "hasWifi": false }
+{ "hasWifi": false }
 ```
 
-- `hasBattery` is meaningful on all four types (optional per physical unit).
 - `hasWifi` is meaningful only on `BUS_STATION`. Bench wifi is always-present per requirements; WiFi AP is itself a wifi device.
 - The detail page hides cards/metrics whose capability flag is false.
 
-### Battery alarm
+### No battery telemetry
 
-Add canonical metric role `batteryPercent`. Threshold rule: `< 15` → severity `WARNING`, alarm `LOW_BATTERY`. Applies only when `capabilities.hasBattery === true`.
+Battery level is **not** part of the product (dropped 2026-07-31, migration `V24__drop_battery_metric.sql`): field devices don't report a trustworthy charge level. The only health signal is ONLINE/OFFLINE from `OfflineDetector` — which covers a dead battery, a comms failure and a power cut alike. Do not re-add a `batteryPercent` role, a low-battery rule or a battery card.
 
 ## Per-device detail page — content matrix
 
 | Card                                | Bench         | Trash bin     | Bus station                | WiFi AP       |
 |-------------------------------------|---------------|---------------|----------------------------|---------------|
 | Header (name, status, location, last seen) | ✓     | ✓             | ✓                          | ✓             |
-| Fill level + alarm threshold        | —             | ✓             | —                          | —             |
+| Configured full/not-full sensor + alarm | —          | ✓                         | —                | —             |
 | Lid access count (+ 7d sparkline)   | —             | ✓             | —                          | —             |
 | Last emptied timestamp              | —             | ✓             | —                          | —             |
 | Charging sessions (+ 7d sparkline)  | ✓             | —             | —                          | —             |
 | WiFi access count (+ 7d sparkline)  | ✓             | —             | ✓ (if `hasWifi`)           | ✓             |
 | Connected clients / throughput      | —             | —             | —                          | ✓             |
-| Battery (current % + low-battery)   | if `hasBattery` | if `hasBattery` | if `hasBattery`        | if `hasBattery` |
 | Telemetry chart                     | ✓             | ✓             | ✓                          | ✓             |
 
 ## Backend changes (`smartcity-be`)
 
 1. **`DeviceKind.java`** — remove `CAMERA` enum value; drop the `CAMERA` case in `fromCategory(...)`.
-2. **`CanonicalMetricRoles.java`** — add `public static final String BATTERY_PERCENT = "batteryPercent";`.
-3. **`Device.java`** — add jsonb column:
+2. **`Device.java`** — add jsonb column:
    ```java
    @Type(JsonType.class)
    @Column(name = "capabilities", columnDefinition = "jsonb", nullable = false)
    private Map<String, Object> capabilities = Map.of();
    ```
-4. **Flyway migration** `V<next>__device_capabilities_and_cleanup.sql`:
+3. **Flyway migration** `V<next>__device_capabilities_and_cleanup.sql`:
    - `ALTER TABLE devices ADD COLUMN capabilities jsonb NOT NULL DEFAULT '{}'::jsonb;`
-   - Append low-battery threshold rule to existing `device_types` rows for the four kept categories.
    - Remove any `device_types` rows with `category = 'CAMERA'` (see open caveat).
-5. **`ThresholdEvaluator.java`** — verify it picks up the new rule purely from `DeviceType.thresholdRules` without code change. Adjust only if the rule schema doesn't match.
-6. **`DeviceMapper.java` / `DeviceController.java`** — include `capabilities` (and existing `lastTelemetry`) in the device DTO returned by `GET /api/devices/{id}`. Hand-written mapper, per project convention (no MapStruct).
-7. **Readings endpoint** — `GET /api/devices/{id}/readings?metric=<role>&from=<iso>&to=<iso>` for the detail-page chart. Extend `SensorController` if a comparable endpoint exists; otherwise add to `DeviceController`.
+4. **`DeviceMapper.java` / `DeviceController.java`** — include `capabilities` (and existing `lastTelemetry`) in the device DTO returned by `GET /api/devices/{id}`. Hand-written mapper, per project convention (no MapStruct).
+5. **Readings endpoint** — `GET /api/devices/{id}/readings?metric=<role>&from=<iso>&to=<iso>` for the detail-page chart. Extend `SensorController` if a comparable endpoint exists; otherwise add to `DeviceController`.
 
 ## Frontend changes (`smartcity-fe`)
 
 1. **`shared/types/smartcity.ts`**
    - `DeviceType` union → `'SMART_BENCH' | 'SMART_BIN' | 'SMART_BUS_STATION' | 'SMART_WIFI_AP' | string` (drop `SMART_TRASH_BIN` and `CAMERA`).
    - `DeviceKind` → drop `'camera'`.
-   - `Device` → add `capabilities?: { hasBattery?: boolean; hasWifi?: boolean }`.
+   - `Device` → add `capabilities?: { hasWifi?: boolean }`.
 
 2. **New route** — `app/[locale]/(app)/devices/[id]/page.tsx`. Fetches the device, branches on `deviceTypeCategory` to render the right panel.
 
 3. **New components** under `features/devices/components/detail/`:
    - `DeviceDetailHeader.tsx` — name, status pill, location, last seen, online indicator.
-   - `BatteryCard.tsx` — shown only when `capabilities.hasBattery`; current %, low-battery state at < 15%.
-   - `TrashBinPanel.tsx` — fill-level gauge, alarm threshold, lid-access total + sparkline, last-emptied.
+   - `TrashBinPanel.tsx` — full/not-full state, lid-access total + sparkline, last-emptied.
    - `BenchPanel.tsx` — charging sessions total + sparkline, wifi access total + sparkline.
    - `BusStationPanel.tsx` — wifi access total + sparkline (only if `hasWifi`); displays/schedules from `stationConfig` if non-empty.
    - `WifiApPanel.tsx` — wifi access total + sparkline, connected clients (current), throughput.

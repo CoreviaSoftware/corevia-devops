@@ -40,7 +40,7 @@ Higher-risk, hot-path changes. Ship one PR at a time, each with its own deploy +
 
 ### 2A. Canonical-equality dedupe
 
-**Problem:** A device emitting the same `fillLevelPercent=42` once per second still triggers full validation + `sensor_readings` insert + alert sweep + SSE broadcast every second.
+**Problem:** A device emitting the same canonical value (for example `isFull=false`) once per second still triggers full validation + `sensor_readings` insert + alert sweep + SSE broadcast every second.
 
 **Files:** `smartcity-be/src/main/java/ro/smartcity/iot/IngestionPipeline.java`, `application.yml`.
 
